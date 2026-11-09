@@ -1,0 +1,108 @@
+<!doctype html>
+<html lang="zh">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>喊</title>
+<style>
+  body { background:#1f1d18; color:#ddd6c6; font-family:"PingFang SC","Noto Sans SC",sans-serif; margin:0; }
+  main { max-width: 46em; margin: 0 auto; padding: 1.6em 1em 4em; }
+  h1 { font-weight: normal; font-size: 20px; margin: 0 0 .4em; color:#f0eadc; }
+  .intro { color:#a39b88; font-size: 14px; line-height: 1.85; margin-bottom: 1em; }
+  #stat { font-size:15px; color:#f0eadc; line-height:1.8; margin:.4em 0 .6em; padding:.5em .7em; background:#29261f; border-radius:3px; }
+  #log { font-size:14px; line-height:1.85; color:#cfc7b4; max-height: 22em; overflow-y:auto; border-top:1px solid #3a362c; padding-top:.4em; }
+  #log .t { color:#7d7563; margin-right:.5em; }
+  #log .a { color:#e9d9a8; margin-right:.6em; }
+  #log .call { color:#f2b46a; }
+  #log .hit { color:#e88b78; }
+  #keys { margin-top: .9em; display:flex; gap:.4em; flex-wrap:wrap; }
+  #say { margin-top: .5em; display:flex; gap:.4em; flex-wrap:wrap; }
+  button { font-family:inherit; font-size:14px; background:#2f2b23; color:#ddd6c6; border:1px solid #514a3b; padding:.4em .8em; cursor:pointer; border-radius:3px; }
+  button:hover { background:#3b362c; }
+  button.learn { border-color:#7a5a32; color:#f2c48a; }
+  #end { margin-top:1.2em; display:none; font-size:14px; line-height:1.8; }
+  #end .big { font-size:16px; color:#fff; margin-bottom:.6em; }
+  table { border-collapse: collapse; font-size:13px; margin:.5em 0; width:100%; }
+  td, th { border:1px solid #3a362c; padding:.25em .45em; text-align:left; vertical-align:top; }
+  th { color:#a39b88; font-weight:normal; }
+  tr.you td { color:#f2c48a; }
+  .foot { margin-top:1em; color:#8a826f; font-size:13px; }
+</style>
+</head>
+<body>
+<main>
+<h1>喊</h1>
+<div class="intro">你是一只蹄兔。你住在一块大石头底下的洞里，边上有一棵果树、一片灌木、一片草地。树上住着一群猴子。<br>
+天亮了。你得在天黑前吃饱（30 口）。草一口算一口；树底下的果子一口顶三口，可猴子在树下的时候轮不到你。<br>
+你挨两下就没命了。一天 40 下。听过的叫声，你也学得出来。</div>
+<div id="stat"></div>
+<div id="log"></div>
+<div id="keys"></div>
+<div id="say"></div>
+<div id="end"></div>
+</main>
+<script src="喊.js"></script>
+<script>
+'use strict';
+const ACTS = ['吃', '去草地', '去树下', '上树', '钻灌木', '进洞', '等'];
+const $ = id => document.getElementById(id);
+let seed, g, acts;
+
+function start(s) {
+  seed = s; g = newGame(seed); acts = [];
+  $('log').innerHTML = ''; $('end').style.display = 'none'; $('end').innerHTML = '';
+  render();
+}
+function esc(s) { return s.replace(/[&<>]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c])); }
+function paint(line) {
+  let h = esc(line);
+  h = h.replace(/(一只(大|小)猴叫：[^　]*)/g, '<span class="call">$1</span>');
+  h = h.replace(/((豹子一爪子|鹰爪子从你|蛇在你后腿)[^。]*。)/g, '<span class="hit">$1</span>');
+  return h;
+}
+function act(a) {
+  if (g.over) return;
+  acts.push(a);
+  const line = step(g, a);
+  const d = document.createElement('div');
+  d.innerHTML = `<span class="t">第 ${g.t} 下</span><span class="a">${esc(a)}</span>` + paint(line);
+  $('log').appendChild(d);
+  $('log').scrollTop = $('log').scrollHeight;
+  render();
+}
+function render() {
+  $('stat').innerHTML = `${esc(zhMonkeys(g.m))}　你在${g.zone === '洞' ? '洞里' : g.zone}。<br>` +
+    `走了 ${g.t} 下，还剩 ${N_TURNS - g.t} 下　肚子 ${g.food}/${GOAL}　挨了 ${2 - g.hp} 下`;
+  $('keys').innerHTML = ''; $('say').innerHTML = '';
+  if (g.over) { $('keys').style.display = 'none'; $('say').style.display = 'none'; showEnd(); return; }
+  $('keys').style.display = ''; $('say').style.display = '';
+  for (const a of ACTS) {
+    const b = document.createElement('button'); b.textContent = a; b.onclick = () => act(a); $('keys').appendChild(b);
+  }
+  for (const syl of g.heard) {
+    const b = document.createElement('button'); b.className = 'learn'; b.textContent = '学' + syl;
+    b.onclick = () => act('学' + syl); $('say').appendChild(b);
+  }
+}
+function showEnd() {
+  const e = $('end'); e.style.display = 'block';
+  const verdict = g.dead ? '你没命了。' : (g.food >= GOAL ? '天黑了。你吃饱了。' : `天黑了。你吃了 ${g.food} 口，没吃饱。`);
+  let h = `<div class="big">${verdict}</div>这一天的叫声：<table><tr><th>第几下</th><th>谁叫的</th><th>叫的什么</th><th>其实是</th><th>猴子怎么做的</th><th>后来</th></tr>`;
+  for (const r of g.log) h += `<tr class="${r[1] === '你' ? 'you' : ''}">` + r.map(x => `<td>${esc(String(x))}</td>`).join('') + '</tr>';
+  h += `</table>天黑时猴子还剩 ${g.m.n} 只（早上是 9 只）。`;
+  h += `<div class="foot">这是第 ${seed} 天。<button id="same">再过一遍这一天</button> <button id="next">换一天</button></div>`;
+  e.innerHTML = h;
+  $('same').onclick = () => start(seed);
+  $('next').onclick = () => { const s = 1 + Math.floor(Math.random() * 9999); history.replaceState(null, '', '#' + s); start(s); };
+}
+document.addEventListener('keydown', ev => {
+  const n = parseInt(ev.key, 10);
+  if (!g.over && n >= 1 && n <= 7) act(ACTS[n - 1]);
+});
+const h = parseInt(location.hash.slice(1), 10);
+const s0 = h > 0 ? h : 1 + Math.floor(Math.random() * 9999);
+if (!(h > 0)) history.replaceState(null, '', '#' + s0);
+start(s0);
+</script>
+</body>
+</html>
