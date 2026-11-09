@@ -118,7 +118,7 @@ function step(g, a) {
       if (row[0] === st - 2 && row[3] === tp)
         row[5] = (caught ? '一只猴子没跑掉' : '扑了个空') + (hit ? '，你挨了一下' : '');
     m.back = 2;
-    if (g.hp <= 0) { line += '　你没跑回洞里。'; g.dead = true; }
+    if (g.hp <= 0) { line += '　你倒在了' + { '草地': '草地上', '树下': '树底下', '树上': '树杈上', '灌木': '灌木里', '洞': '洞里' }[g.zone] + '。'; g.dead = true; }
   }
   // 猴子回去吃
   if (!g.dead && m.where !== '果' && m.back > 0) {

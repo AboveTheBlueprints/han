@@ -93,7 +93,7 @@ function showEnd() {
   h += `<div class="foot">这是第 ${seed} 天。<button id="same">再过一遍这一天</button> <button id="next">换一天</button></div>`;
   e.innerHTML = h;
   $('same').onclick = () => start(seed);
-  $('next').onclick = () => { const s = 1 + Math.floor(Math.random() * 9999); history.replaceState(null, '', '#' + s); start(s); };
+  $('next').onclick = () => { const s = (seed * 31 + 7) % 9999 + 1; history.replaceState(null, '', '#' + s); start(s); };
 }
 document.addEventListener('keydown', ev => {
   const n = parseInt(ev.key, 10);
