@@ -46,11 +46,11 @@
 'use strict';
 const ACTS = ['吃', '去草地', '去树下', '上树', '钻灌木', '进洞', '等'];
 const $ = id => document.getElementById(id);
-let seed, g, acts;
+let seed, g, acts, yest = null;
 
-function start(s) {
-  seed = s; g = newGame(seed); acts = [];
-  $('log').innerHTML = ''; $('end').style.display = 'none'; $('end').innerHTML = '';
+function start(s, y) {
+  seed = s; yest = y || null; g = newGame(seed, yest); acts = [];
+  $('log').innerHTML = yest ? '<div class="t">第二天。天亮了。</div>' : ''; $('end').style.display = 'none'; $('end').innerHTML = '';
   render();
 }
 function esc(s) { return s.replace(/[&<>]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c])); }
@@ -71,7 +71,7 @@ function act(a) {
   render();
 }
 function render() {
-  $('stat').innerHTML = `${esc(zhMonkeys(g.m))}　你在${g.zone === '洞' ? '洞里' : g.zone}。<br>` +
+  $('stat').innerHTML = (g.day === 2 ? '第二天　' : '') + `${esc(zhMonkeys(g.m))}　你在${g.zone === '洞' ? '洞里' : g.zone}。<br>` +
     `走了 ${g.t} 下，还剩 ${N_TURNS - g.t} 下　肚子 ${g.food}/${GOAL}　挨了 ${2 - g.hp} 下`;
   $('keys').innerHTML = ''; $('say').innerHTML = '';
   if (g.over) { $('keys').style.display = 'none'; $('say').style.display = 'none'; showEnd(); return; }
@@ -89,9 +89,16 @@ function showEnd() {
   const verdict = g.dead ? '你没命了。' : (g.food >= GOAL ? '天黑了。你吃饱了。' : `天黑了。你吃了 ${g.food} 口，没吃饱。`);
   let h = `<div class="big">${verdict}</div>这一天的叫声：<table><tr><th>第几下</th><th>谁叫的</th><th>叫的什么</th><th>其实是</th><th>猴子怎么做的</th><th>后来</th></tr>`;
   for (const r of g.log) h += `<tr class="${r[1] === '你' ? 'you' : ''}">` + r.map(x => `<td>${esc(String(x))}</td>`).join('') + '</tr>';
-  h += `</table>天黑时猴子还剩 ${g.m.n} 只（早上是 9 只）。`;
-  h += `<div class="foot">这是第 ${seed} 天。<button id="same">再过一遍这一天</button> <button id="next">换一天</button></div>`;
+  h += `</table>${g.dead ? '这时' : '天黑时'}猴子还剩 ${g.m.n} 只（早上是 ${g.day === 2 ? yest.n : 9} 只）。`;
+  if (g.day === 1 && !g.dead) {
+    h += `<div class="foot">这是第 ${seed} 天。<button id="day2">过第二天</button> <button id="same">再过一遍这一天</button> <button id="next">换一天</button></div>`;
+  } else if (g.day === 1) {
+    h += `<div class="foot">这是第 ${seed} 天。<button id="same">再过一遍这一天</button> <button id="next">换一天</button></div>`;
+  } else {
+    h += `<div class="foot">这是第 ${seed} 天的第二天。<button id="same">从第一天再来一遍</button> <button id="next">换一天</button></div>`;
+  }
   e.innerHTML = h;
+  if ($('day2')) $('day2').onclick = () => start(seed, yesterday(g));
   $('same').onclick = () => start(seed);
   $('next').onclick = () => { const s = (seed * 31 + 7) % 9999 + 1; history.replaceState(null, '', '#' + s); start(s); };
 }

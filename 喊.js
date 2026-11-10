@@ -15,7 +15,7 @@ const MISS = { '豹': '它扑了个空，转身走了', '鹰': '它扑了个空�
 const MSAFE = { '豹': ['树上'], '鹰': ['灌木'], '蛇': ['站', '树上', '灌木'] };
 const ZONES = { '去草地': '草地', '去树下': '树下', '上树': '树上', '钻灌木': '灌木', '进洞': '洞' };
 const GO = { '草地': '你跑回草地。', '树下': '你跑到树底下。', '树上': '你爬上树。', '灌木': '你钻进灌木。', '洞': '你钻进石头底下的洞。' };
-const RESP = { '树上': '猴子全窜上了树。', '灌木': '猴子全钻进了灌木。', '站': '猴子都站起来，低头看着草里。' };
+const RESP = { '树上': '猴子全窜上了树。', '灌木': '猴子全钻进了灌木。', '站': '猴子都在树底下站起来，低头看着草里。' };
 
 function rng(seed) {           // mulberry32
   let a = seed >>> 0;
@@ -27,8 +27,8 @@ function rng(seed) {           // mulberry32
   };
 }
 
-function makeDay(seed) {
-  const r = rng(seed * 7919 + 13);
+function makeDay(seed, dayNo) {
+  const r = rng(seed * 7919 + 13 + ((dayNo || 1) - 1) * 104729);
   const ri = (lo, hi) => lo + Math.floor(r() * (hi - lo + 1));
   const types = ['豹', '鹰', '蛇'];
   for (let i = 2; i > 0; i--) { const j = Math.floor(r() * (i + 1)); [types[i], types[j]] = [types[j], types[i]]; }
@@ -55,16 +55,37 @@ function dull(m, tp) {
   return '猴子抬头看了一眼，没动。';
 }
 
-function newGame(seed) {
-  const day = makeDay(seed);
+function newGame(seed, yest) {
+  const day = yest ? 2 : 1;
+  const evs = makeDay(seed, day);
   const events = {};
-  for (const [t, who, what] of day) events[t] = [who, what];
+  for (const [t, who, what] of evs) events[t] = [who, what];
+  // 第二天（第二个 第 16 天 07:50）：昨天你哪一种叫学了两回以上，今天那只小猴也会拿这一声在树下骗大猴走开，自己捡果子。
+  // 来由：Wheeler 2009，卷尾猴里地位低的在香蕉跟前报假警，比平常多十倍，四成能把大猴吓走。让它学的是你，是我编的。
+  const cheatQ = [];
+  let cheatTp = null;
+  if (yest) {
+    const c = ['豹', '鹰'].filter(k => yest.imit[k] >= 2).sort((a, b) => yest.imit[b] - yest.imit[a]);
+    if (c.length) {
+      cheatTp = c[0];
+      const k = Math.min(3, yest.imit[cheatTp]);
+      const r = rng(seed * 31337 + 7);
+      // 小猴骗的时候：从第 5 下起，大约每隔 (35/k) 下想骗一回；到点了要等猴子在树下吃、没有扑下来的才骗
+      for (let i = 0; i < k; i++) cheatQ.push(5 + Math.floor((i + r() * 0.6) * 30 / k));
+    }
+  }
   return {
-    seed, events, t: 0, zone: '草地', food: 0, hp: 2, heard: [],
+    seed, day, events, cheatQ, cheatTp, t: 0, zone: '草地', food: 0, hp: 2, heard: yest ? yest.heard.slice() : [],
     strength: { '豹': 1, '鹰': 1, '蛇': 1 },
-    m: { n: 9, where: '果', back: 0 },
+    m: { n: yest ? yest.n : 9, where: '果', back: 0, kid: false },
+    imit: { '豹': 0, '鹰': 0, '蛇': 0 },
     pending: [], log: [], dead: false, over: false,
   };
+}
+
+// 过完第一天，拿它给第二天
+function yesterday(g) {
+  return { imit: Object.assign({}, g.imit), n: g.m.n, heard: g.heard.slice() };
 }
 
 // 走一下，返回这一下的那一行
@@ -81,6 +102,7 @@ function step(g, a) {
     if (g.zone === '草地') { g.food += 1; line += '你啃了一口草。'; }
     else if (g.zone === '树下') {
       if (m.n > 0 && (m.where === '果' || m.where === '站')) line += '大猴冲你龇牙，你没抢着。';
+      else if (m.kid) { g.food += 1; line += '小猴抱着果子冲你吱哇乱叫，你只抢到一口。'; }
       else { g.food += 3; line += '果子掉了一地没人管，你吃了一大口。'; }
     } else line += '这儿没吃的。';
   } else if (a === '等') {
@@ -101,6 +123,7 @@ function step(g, a) {
         g.log.push([t, '你', syl, '你学的', resp.replace(/。$/, ''), '什么也没来']);
       }
       g.strength[tp] = Math.max(0, g.strength[tp] - 0.35);
+      g.imit[tp] += 1;
     }
   }
   // 到点的扑下来
@@ -128,9 +151,23 @@ function step(g, a) {
       if (pre) line += '　' + pre;
     }
     if (m.back === 0 && !g.pending.length) {
-      m.where = '果';
+      m.where = '果'; m.kid = false;
       if (m.n > 0) line += '　猴子又回到树底下吃果子。';
     }
+  }
+  // 第二天：小猴拿你昨天那一声骗
+  if (!g.dead && g.cheatQ.length && g.cheatQ[0] <= t && m.n > 1 && m.where === '果' && !g.pending.length && !g.events[t]) {
+    g.cheatQ.shift();
+    const tp = g.cheatTp, syl = CALL[tp];
+    line += `　一只小猴叫：${syl}！${syl}！`;
+    let resp;
+    if (g.strength[tp] >= 0.5) {
+      m.where = HIDE[tp]; m.back = 3; m.kid = true;
+      resp = RESP[m.where] + '那只小猴没' + (tp === '豹' ? '上树' : '钻进去') + '，一个人在树底下捡果子。';
+    } else resp = '猴子抬头看了一眼，没动。';
+    line += '　' + resp;
+    g.strength[tp] = Math.max(0, g.strength[tp] - 0.35);
+    g.log.push([t, '小猴', syl, '什么也没有', resp.replace(/。$/, ''), m.kid ? '小猴一个人吃果子' : '什么也没来']);
   }
   // 这一下末尾有谁叫
   if (!g.dead && g.events[t] && m.n > 0) {
@@ -145,7 +182,7 @@ function step(g, a) {
       g.log.push([t, '小猴', syl, '天上飞过一只鸟', resp.replace(/。$/, ''), '什么也没来']);
     } else {
       let resp;
-      if (g.strength[tp] >= 0.5) { m.where = HIDE[tp]; m.back = 99; resp = RESP[m.where]; }
+      if (g.strength[tp] >= 0.5) { m.where = HIDE[tp]; m.back = 99; m.kid = false; resp = RESP[m.where]; }
       else resp = dull(m, tp);
       line += '　' + resp;
       g.pending.push([t + 2, tp]);
@@ -159,8 +196,8 @@ function step(g, a) {
 
 function zhMonkeys(m) {
   if (m.n === 0) return '猴子一只都没了。';
-  const s = { '果': '在树下吃果子', '树上': '都在树上', '灌木': '都钻在灌木里', '站': '都站起来，低头看着草里' }[m.where];
+  const s = { '果': '在树下吃果子', '树上': '都在树上', '灌木': '都钻在灌木里', '站': '都在树底下站着，低头看着草里' }[m.where];
   return `猴子${m.n}只，${s}。`;
 }
 
-if (typeof module !== 'undefined') module.exports = { newGame, step, zhMonkeys, makeDay, N_TURNS, GOAL };
+if (typeof module !== 'undefined') module.exports = { newGame, step, zhMonkeys, makeDay, yesterday, N_TURNS, GOAL };
