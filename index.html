@@ -49,6 +49,7 @@ const $ = id => document.getElementById(id);
 let seed, g, acts, yest = null;
 
 function start(s, y) {
+  try { localStorage.setItem('han-day', String(arguments[0])); } catch (e) {}
   seed = s; yest = y || null; g = newGame(seed, yest); acts = [];
   $('log').innerHTML = yest ? '<div class="t">第二天。天亮了。</div>' : ''; $('end').style.display = 'none'; $('end').innerHTML = '';
   render();
@@ -107,7 +108,8 @@ document.addEventListener('keydown', ev => {
   if (!g.over && n >= 1 && n <= 7) act(ACTS[n - 1]);
 });
 const h = parseInt(location.hash.slice(1), 10);
-const s0 = h > 0 ? h : 1 + Math.floor(Math.random() * 9999);
+let last = 0; try { last = parseInt(localStorage.getItem('han-day'), 10) || 0; } catch (e) {}
+const s0 = h > 0 ? h : last > 0 ? last : 1 + Math.floor(Math.random() * 9999);
 if (!(h > 0)) history.replaceState(null, '', '#' + s0);
 start(s0);
 </script>
